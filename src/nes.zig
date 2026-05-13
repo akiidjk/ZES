@@ -18,5 +18,7 @@ const CPU = struct {
     Y: u8,
     P: u8,
 
-    fn init() CPU {}
+    fn interpret(program: []u8) void {
+        _ = program;
+    }
 };
