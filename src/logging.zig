@@ -10,14 +10,15 @@ pub const default_level: std.log.Level = switch (builtin.mode) {
 
 pub fn formatFn(comptime level: std.log.Level, comptime scope: @TypeOf(.EnumLiteral), comptime format: []const u8, args: anytype) void {
     // Time
-    const ts_ms: i64 = std.time.milliTimestamp();
-    const sec: i64 = @divTrunc(ts_ms, 1000);
-    const ms: i64 = @mod(ts_ms, 1000);
+    // const ts_ms: i64 = std.Io.Timestamp.now(std, std.Io.Clock.real).toMilliseconds();
+    // const sec: i64 = @divTrunc(ts_ms, 1000);
+    // const ms: i64 = @mod(ts_ms, 1000);
 
     // Scope (add your known scopes here; provide a fallback)
     const scope_name = switch (scope) {
         .nes => "nes",
         .log => "log",
+        .sdl => "sdl",
         else => "unknown",
     };
 
@@ -39,8 +40,8 @@ pub fn formatFn(comptime level: std.log.Level, comptime scope: @TypeOf(.EnumLite
     // Prefix: [time] [scope] LEVEL:
     // Example: 1617.123 [sdl] INFO:
     // Use std.debug.print for output to avoid recursion into std.log.*
-    std.debug.print("\x1b[90m{d}.{d:03}\x1b[0m [{s}] {s}{s}{s}: ", .{ sec, ms, scope_name, color_start, level_name, color_end });
-
+    // std.debug.print("\x1b[90m{d}.{d:03}\x1b[0m [{s}] {s}{s}{s}: ", .{ sec, ms, scope_name, color_start, level_name, color_end });
+    std.debug.print("\x1b[90m\x1b[0m [{s}] {s}{s}{s}: ", .{ scope_name, color_start, level_name, color_end });
     // The user-provided message and args
     std.debug.print(format, args);
 
@@ -48,6 +49,6 @@ pub fn formatFn(comptime level: std.log.Level, comptime scope: @TypeOf(.EnumLite
     std.debug.print("\n", .{});
 }
 
-pub const sdl = std.log.scoped(.sdl);
-pub const chip8 = std.log.scoped(.chip8);
+pub const nes = std.log.scoped(.nes);
 pub const log = std.log.scoped(.log);
+pub const sdl = std.log.scoped(.sdl);
