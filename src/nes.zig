@@ -15,6 +15,22 @@ const AddressingMode = enum {
     NoneAddressing,
 };
 
+const Flag = enum(u3) {
+    Carry = 0,
+    Zero = 1,
+    Interrupt = 2,
+    Decimal = 3,
+    Break = 4,
+    Unused = 5,
+    Overflow = 6,
+    Negative = 7,
+};
+
+const AddressResult = struct {
+    addr: u16,
+    page_crossed: bool,
+};
+
 pub const CPU = struct {
     PC: u16, // Memory space: 0x0100 .. 0x1FF
     SP: u8,
@@ -23,11 +39,12 @@ pub const CPU = struct {
     Y: u8,
     P: u8,
     memory: []u8,
+    cycles: u16,
 
     pub fn init(allocator: std.mem.Allocator) !*CPU {
         const cpu = try allocator.create(CPU);
         const mem = try allocator.alloc(u8, 0xFFFF);
-        cpu.* = .{ .PC = 0, .SP = 0, .A = 0, .X = 0, .Y = 0, .P = 0, .memory = mem };
+        cpu.* = .{ .PC = 0, .SP = 0, .A = 0, .X = 0, .Y = 0, .P = 0, .memory = mem, .cycles = 0 };
         return cpu;
     }
 
@@ -70,60 +87,118 @@ pub const CPU = struct {
         self.run();
     }
 
-    fn get_op_address(self: *CPU, mode: AddressingMode) !u16 {
+    fn get_op_address(self: *CPU, mode: AddressingMode) AddressResult {
         switch (mode) {
             AddressingMode.Immediate => {
-                return self.PC;
+                self.PC += 1;
+                return .{ .addr = self.PC, .page_crossed = false };
             },
             AddressingMode.ZeroPage => {
-                return self.mem_read(self.PC);
+                self.PC += 1;
+                return .{ .addr = self.mem_read(self.PC), .page_crossed = false };
             },
             AddressingMode.Absolute => {
-                return self.mem_read_u16(self.PC);
+                self.PC += 2;
+                return .{ .addr = self.mem_read_u16(self.PC), .page_crossed = false };
             },
             AddressingMode.ZeroPage_X => {
                 const pos = self.mem_read(self.PC);
                 const addr, _ = @addWithOverflow(pos, self.X);
-                return addr;
+                self.PC += 1;
+                return .{ .addr = addr, .page_crossed = false };
             },
             AddressingMode.ZeroPage_Y => {
                 const pos = self.mem_read(self.PC);
                 const addr, _ = @addWithOverflow(pos, self.Y);
-                return addr;
+                self.PC += 1;
+                return .{ .addr = addr, .page_crossed = false };
             },
             AddressingMode.Absolute_X => {
-                const pos = self.mem_read_u16(self.PC);
-                const addr, _ = @addWithOverflow(pos, self.X);
-                return addr;
+                const base = self.mem_read_u16(self.PC);
+                const addr, _ = @addWithOverflow(base, @as(u16, self.X));
+                self.PC += 2;
+                return .{
+                    .addr = addr,
+                    .page_crossed = (base & 0xFF00) != (addr & 0xFF00),
+                };
             },
             AddressingMode.Absolute_Y => {
-                const pos = self.mem_read_u16(self.PC);
-                const addr, _ = @addWithOverflow(pos, self.Y);
-                return addr;
+                const base = self.mem_read_u16(self.PC);
+                const addr, _ = @addWithOverflow(base, @as(u16, self.Y));
+                self.PC += 2;
+                return .{
+                    .addr = addr,
+                    .page_crossed = (base & 0xFF00) != (addr & 0xFF00),
+                };
             },
             AddressingMode.Indirect_X => {
-                const base = self.mem_read(self.program_counter);
-
-                const ptr: u8 = @addWithOverflow(base, self.X);
-                const lo: u16 = self.mem_read(@intCast(ptr));
-                const hi: u16 = self.mem_read(@intCast(@addWithOverflow(ptr, 1)));
-                return hi << 8 | lo;
+                const zp = self.mem_read(self.PC);
+                const lo: u16 = self.mem_read(zp);
+                const hi: u16 = self.mem_read(@intCast(@addWithOverflow(zp, 1)[0]));
+                const base: u16 = (hi << 8) | lo;
+                const addr, _ = @addWithOverflow(base, @as(u16, self.Y));
+                self.PC += 1;
+                return .{
+                    .addr = addr,
+                    .page_crossed = (base & 0xFF00) != (addr & 0xFF00),
+                };
             },
             AddressingMode.Indirect_Y => {
-                const base = self.mem_read(self.program_counter);
-
-                const lo: u16 = self.mem_read(base);
-                const hi: u16 = self.mem_read(@intCast(@addWithOverflow(base, 1)));
-                const deref_base: u16 = hi << 16 | lo;
-                const deref: u16 = @addWithOverflow(self.Y, deref_base);
-                return deref;
+                const zp = self.mem_read(self.PC);
+                const ptr: u8 = @addWithOverflow(zp, self.X)[0];
+                const lo: u16 = self.mem_read(ptr);
+                const hi: u16 = self.mem_read(@addWithOverflow(ptr, 1)[0]);
+                self.PC += 1;
+                return .{ .addr = (hi << 8) | lo, .page_crossed = false };
             },
             AddressingMode.NoneAddressing => {
-                return error{NoAddressingFound};
+                return .{ .addr = self.mem_read(self.PC), .page_crossed = false };
             },
-            else => {
-                return error{NoAddressingFound};
-            },
+        }
+    }
+
+    fn set_flag(self: *CPU, flag: Flag, value: u1) void {
+        self.P |= (@as(u8, value) << @intFromEnum(flag));
+    }
+
+    fn clear_flag(self: *CPU, flag: Flag) void {
+        self.P &= ~(1 << @intFromEnum(flag));
+    }
+
+    fn get_flag(self: *CPU, flag: Flag) bool {
+        return (self.P & @as(u8, (@as(u8, 1) << @intFromEnum(flag)))) != 0;
+    }
+
+    fn adc(self: *CPU, mode: AddressingMode) void {
+        const result = self.get_op_address(mode);
+        self.cycles += @intFromBool(result.page_crossed);
+        const value = self.mem_read(result.addr);
+
+        const a = self.A;
+        const c: u8 = @intFromBool(self.get_flag(.Carry));
+
+        const res1, const carry1: u1 = @addWithOverflow(a, value);
+        const res2, const carry2: u1 = @addWithOverflow(res1, c);
+
+        self.A = res2;
+        self.set_flag(.Carry, carry1 | carry2);
+
+        const overflow = ((~(a ^ value) & (a ^ self.A)) & 0x80) != 0;
+        self.set_flag(.Overflow, @intFromBool(overflow));
+
+        if (res2 == 0) {
+            self.set_flag(.Zero, 1);
+        }
+
+        self.set_flag(.Negative, @intFromBool((self.P & 0x80) != 0));
+    }
+
+    fn lsr(self: *CPU, mode: AddressingMode) void {
+        if (mode == .Accumulator) {
+            self.A = self.A >> 1;
+        } else {
+            const addr = self.get_op_address(mode);
+            self.mem_write(addr, self.shift_right(self.mem_read(addr)));
         }
     }
 
@@ -136,6 +211,38 @@ pub const CPU = struct {
 
             switch (opcode) { // Decode
                 // Execute
+                0x69 => {
+                    self.cycles += 2;
+                    self.adc(AddressingMode.Immediate);
+                },
+                0x65 => {
+                    self.cycles += 3;
+                    self.adc(AddressingMode.ZeroPage);
+                },
+                0x75 => {
+                    self.cycles += 4;
+                    self.adc(AddressingMode.ZeroPage_X);
+                },
+                0x6d => {
+                    self.cycles += 4;
+                    self.adc(AddressingMode.Absolute);
+                },
+                0x7D => {
+                    self.cycles += 4; // 5 if page is crossed
+                    self.adc(AddressingMode.Absolute_X);
+                },
+                0x79 => {
+                    self.cycles += 4; // 5 if page is crossed
+                    self.adc(AddressingMode.Absolute_Y);
+                },
+                0x61 => {
+                    self.cycles += 6;
+                    self.adc(AddressingMode.Immediate);
+                },
+                0x71 => {
+                    self.cycles += 5; // 6 if page is crossed
+                    self.adc(AddressingMode.Immediate);
+                },
                 0x00 => {
                     return;
                 },
