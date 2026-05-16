@@ -200,54 +200,33 @@ pub const CPU = struct {
     fn run(self: *CPU) void {
         const opcodes = opcodeMod.init_opcode();
         while (true) {
-            const op: u16 = self.mem_read(self.PC); // Fetch
-            const opcode = opcodes.get(op);
+            const code: u16 = self.mem_read(self.PC); // Fetch
+            const opcode = opcodes.get(code);
             self.PC += 1;
+            const program_counter_state = self.PC;
+            std.debug.print("{x}\n", .{code});
 
-            std.debug.print("{x}\n", .{op});
-
-            switch (op) { // Decode
+            switch (code) { // Decode
                 // Execute
                 // ADC
-                0x69 => {
-                    self.adc(opcode.?.mode);
-                },
-                0x65 => {
-                    self.adc(opcode.?.mode);
-                },
-                0x75 => {
-                    self.adc(opcode.?.mode);
-                },
-                0x6d => {
-                    self.adc(opcode.?.mode);
-                },
-                0x7D => {
-                    self.adc(opcode.?.mode);
-                },
-                0x79 => {
-                    self.adc(opcode.?.mode);
-                },
-                0x61 => {
-                    self.adc(opcode.?.mode);
-                },
-                0x71 => {
+                0x69,
+                0x65,
+                0x75,
+                0x6d,
+                0x7D,
+                0x79,
+                0x61,
+                0x71,
+                => {
                     self.adc(opcode.?.mode);
                 },
                 // LSR
-                0x4a => {
+                0x4a, 0x46, 0x56, 0x4e, 0x5e => {
                     self.lsr(opcode.?.mode);
                 },
-                0x46 => {
-                    self.lsr(opcode.?.mode);
-                },
-                0x56 => {
-                    self.lsr(opcode.?.mode);
-                },
-                0x4e => {
-                    self.lsr(opcode.?.mode);
-                },
-                0x5e => {
-                    self.lsr(opcode.?.mode);
+                // NOP
+                0xea => {
+                    //do nothing
                 },
                 0x00 => {
                     return;
@@ -258,7 +237,9 @@ pub const CPU = struct {
                 },
             }
 
-            self.PC += opcode.?.size;
+            if (program_counter_state == self.PC) {
+                self.PC += (opcode.?.size - 1);
+            }
             self.cycles += opcode.?.cycles;
         }
     }
