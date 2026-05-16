@@ -2,19 +2,6 @@ const std = @import("std");
 const logger = @import("logging").log;
 const nesLog = @import("logging").nes;
 
-const AddressingMode = enum {
-    Immediate,
-    ZeroPage,
-    ZeroPage_X,
-    ZeroPage_Y,
-    Absolute,
-    Absolute_X,
-    Absolute_Y,
-    Indirect_X,
-    Indirect_Y,
-    NoneAddressing,
-};
-
 const Flag = enum(u3) {
     Carry = 0,
     Zero = 1,
@@ -73,9 +60,15 @@ pub const CPU = struct {
         self.mem_write(addr + 1, hi);
     }
 
+    fn update_zero_and_negative_flags(self: *CPU, result: u8) void {
+        self.set_flag(.Zero, @intFromBool(result == 0));
+        self.set_flag(.Negative, @intFromBool((result & 0b1000_0000) != 0));
+    }
+
     fn reset(self: *CPU) void {
         self.A = 0;
         self.X = 0;
+        self.PC += 0;
         self.P = 0;
 
         self.PC = self.mem_read_u16(0xFFFC);
@@ -186,20 +179,21 @@ pub const CPU = struct {
         const overflow = ((~(a ^ value) & (a ^ self.A)) & 0x80) != 0;
         self.set_flag(.Overflow, @intFromBool(overflow));
 
-        if (res2 == 0) {
-            self.set_flag(.Zero, 1);
-        }
-
-        self.set_flag(.Negative, @intFromBool((self.P & 0x80) != 0));
+        self.update_zero_and_negative_flags(value);
     }
 
     fn lsr(self: *CPU, mode: AddressingMode) void {
-        if (mode == .Accumulator) {
-            self.A = self.A >> 1;
+        var value: u8 = 0;
+        if (mode == AddressingMode.NoneAddressing) {
+            value = self.A >> 1;
+            self.A = value;
         } else {
-            const addr = self.get_op_address(mode);
-            self.mem_write(addr, self.shift_right(self.mem_read(addr)));
+            const result = self.get_op_address(mode);
+            value = self.mem_read(result.addr) >> 1;
+            self.mem_write(result.addr, value);
         }
+        self.set_flag(.Carry, @intFromBool((value & 1) != 0));
+        self.update_zero_and_negative_flags(value);
     }
 
     fn run(self: *CPU) void {
@@ -211,37 +205,72 @@ pub const CPU = struct {
 
             switch (opcode) { // Decode
                 // Execute
+                // ADC
                 0x69 => {
                     self.cycles += 2;
+                    self.PC += 1;
                     self.adc(AddressingMode.Immediate);
                 },
                 0x65 => {
                     self.cycles += 3;
+                    self.PC += 1;
                     self.adc(AddressingMode.ZeroPage);
                 },
                 0x75 => {
                     self.cycles += 4;
+                    self.PC += 1;
                     self.adc(AddressingMode.ZeroPage_X);
                 },
                 0x6d => {
                     self.cycles += 4;
+                    self.PC += 2;
                     self.adc(AddressingMode.Absolute);
                 },
                 0x7D => {
                     self.cycles += 4; // 5 if page is crossed
+                    self.PC += 2;
                     self.adc(AddressingMode.Absolute_X);
                 },
                 0x79 => {
                     self.cycles += 4; // 5 if page is crossed
+                    self.PC += 2;
                     self.adc(AddressingMode.Absolute_Y);
                 },
                 0x61 => {
                     self.cycles += 6;
+                    self.PC += 1;
                     self.adc(AddressingMode.Immediate);
                 },
                 0x71 => {
                     self.cycles += 5; // 6 if page is crossed
+                    self.PC += 1;
                     self.adc(AddressingMode.Immediate);
+                },
+                // LSR
+                0x4a => {
+                    self.cycles += 2;
+                    // + 0
+                    self.lsr(AddressingMode.NoneAddressing);
+                },
+                0x46 => {
+                    self.cycles += 5;
+                    self.PC += 1;
+                    self.lsr(AddressingMode.ZeroPage);
+                },
+                0x56 => {
+                    self.cycles += 6;
+                    self.PC += 1;
+                    self.lsr(AddressingMode.ZeroPage_X);
+                },
+                0x4e => {
+                    self.cycles += 6;
+                    self.PC += 2;
+                    self.lsr(AddressingMode.Absolute);
+                },
+                0x5e => {
+                    self.cycles += 7;
+                    self.PC += 2;
+                    self.lsr(AddressingMode.Absolute_X);
                 },
                 0x00 => {
                     return;
