@@ -16,7 +16,7 @@ pub fn formatFn(comptime level: std.log.Level, comptime scope: @TypeOf(.EnumLite
 
     // Scope (add your known scopes here; provide a fallback)
     const scope_name = switch (scope) {
-        .nes => "nes",
+        .cpu => "cpu",
         .log => "log",
         .sdl => "sdl",
         else => "unknown",
@@ -49,6 +49,6 @@ pub fn formatFn(comptime level: std.log.Level, comptime scope: @TypeOf(.EnumLite
     std.debug.print("\n", .{});
 }
 
-pub const nes = std.log.scoped(.nes);
+pub const cpu = std.log.scoped(.cpu);
 pub const log = std.log.scoped(.log);
 pub const sdl = std.log.scoped(.sdl);

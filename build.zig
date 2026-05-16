@@ -30,7 +30,7 @@ pub fn build(b: *std.Build) void {
     // module they want to access.
 
     const logging = b.addModule("logging", .{ .root_source_file = b.path("src/logging.zig"), .target = target });
-    const nes = b.addModule("nes", .{ .root_source_file = b.path("src/nes.zig"), .target = target, .imports = &.{
+    const cpu = b.addModule("cpu", .{ .root_source_file = b.path("src/cpu.zig"), .target = target, .imports = &.{
         .{ .name = "logging", .module = logging },
     } });
     const sdl_mod = b.addModule("sdl", .{
@@ -76,7 +76,7 @@ pub fn build(b: *std.Build) void {
                 // repeated because you are allowed to rename your imports, which
                 // can be extremely useful in case of collisions (which can happen
                 // importing modules from different packages).
-                .{ .name = "nes", .module = nes },
+                .{ .name = "cpu", .module = cpu },
                 .{ .name = "logging", .module = logging },
                 .{ .name = "sdl", .module = sdl_mod },
             },

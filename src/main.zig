@@ -1,13 +1,13 @@
 const std = @import("std");
 const zes = @import("zes");
-const nes = @import("nes");
+const cpu = @import("cpu");
 const Io = std.Io;
 const logging = @import("logging");
 const logger = @import("logging").log;
-const nesLog = @import("logging").nes;
+const nesLog = @import("logging").cpu;
 
 pub const std_options: std.Options = .{ .logFn = logging.formatFn, .log_level = logging.default_level, .log_scope_levels = &[_]std.log.ScopeLevel{
-    .{ .scope = .nes, .level = .debug },
+    .{ .scope = .cpu, .level = .debug },
     .{ .scope = .log, .level = .debug },
 } };
 
@@ -28,7 +28,7 @@ pub fn main(init: std.process.Init) !void {
         return;
     }
     const romPath = args[1];
-    var cpu = try nes.CPU.init(arena);
+    var cpuInstance = try cpu.CPU.init(arena);
     const rom = getRom(arena, romPath, init.io) catch |err| switch (err) {
         error.FileNotFound, error.AccessDenied => {
             logger.err("unable to open file: {}\n", .{err});
@@ -37,5 +37,5 @@ pub fn main(init: std.process.Init) !void {
         else => |e| return e, // don't continue; rather, bomb out
     };
 
-    cpu.load_and_run(rom);
+    cpuInstance.load_and_run(rom);
 }

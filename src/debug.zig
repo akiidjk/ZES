@@ -1,5 +1,5 @@
 const std = @import("std");
-const nes = @import("nes.zig");
+const cpu = @import("cpu.zig");
 const builtin = @import("builtin");
 
 // Source - https://stackoverflow.com/q/79880678

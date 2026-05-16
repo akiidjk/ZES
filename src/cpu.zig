@@ -1,6 +1,6 @@
 const std = @import("std");
 const logger = @import("logging").log;
-const nesLog = @import("logging").nes;
+const nesLog = @import("logging").cpu;
 const opcodeMod = @import("opcode.zig");
 
 const Flag = enum(u3) {
