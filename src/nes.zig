@@ -1,6 +1,7 @@
 const std = @import("std");
 const logger = @import("logging").log;
 const nesLog = @import("logging").nes;
+const opcodeMod = @import("opcode.zig");
 
 const Flag = enum(u3) {
     Carry = 0,
@@ -80,33 +81,33 @@ pub const CPU = struct {
         self.run();
     }
 
-    fn get_op_address(self: *CPU, mode: AddressingMode) AddressResult {
+    fn get_op_address(self: *CPU, mode: opcodeMod.AddressingMode) AddressResult {
         switch (mode) {
-            AddressingMode.Immediate => {
+            opcodeMod.AddressingMode.Immediate => {
                 self.PC += 1;
                 return .{ .addr = self.PC, .page_crossed = false };
             },
-            AddressingMode.ZeroPage => {
+            opcodeMod.AddressingMode.ZeroPage => {
                 self.PC += 1;
                 return .{ .addr = self.mem_read(self.PC), .page_crossed = false };
             },
-            AddressingMode.Absolute => {
+            opcodeMod.AddressingMode.Absolute => {
                 self.PC += 2;
                 return .{ .addr = self.mem_read_u16(self.PC), .page_crossed = false };
             },
-            AddressingMode.ZeroPage_X => {
+            opcodeMod.AddressingMode.ZeroPage_X => {
                 const pos = self.mem_read(self.PC);
                 const addr, _ = @addWithOverflow(pos, self.X);
                 self.PC += 1;
                 return .{ .addr = addr, .page_crossed = false };
             },
-            AddressingMode.ZeroPage_Y => {
+            opcodeMod.AddressingMode.ZeroPage_Y => {
                 const pos = self.mem_read(self.PC);
                 const addr, _ = @addWithOverflow(pos, self.Y);
                 self.PC += 1;
                 return .{ .addr = addr, .page_crossed = false };
             },
-            AddressingMode.Absolute_X => {
+            opcodeMod.AddressingMode.Absolute_X => {
                 const base = self.mem_read_u16(self.PC);
                 const addr, _ = @addWithOverflow(base, @as(u16, self.X));
                 self.PC += 2;
@@ -115,7 +116,7 @@ pub const CPU = struct {
                     .page_crossed = (base & 0xFF00) != (addr & 0xFF00),
                 };
             },
-            AddressingMode.Absolute_Y => {
+            opcodeMod.AddressingMode.Absolute_Y => {
                 const base = self.mem_read_u16(self.PC);
                 const addr, _ = @addWithOverflow(base, @as(u16, self.Y));
                 self.PC += 2;
@@ -124,7 +125,7 @@ pub const CPU = struct {
                     .page_crossed = (base & 0xFF00) != (addr & 0xFF00),
                 };
             },
-            AddressingMode.Indirect_X => {
+            opcodeMod.AddressingMode.Indirect_X => {
                 const zp = self.mem_read(self.PC);
                 const lo: u16 = self.mem_read(zp);
                 const hi: u16 = self.mem_read(@intCast(@addWithOverflow(zp, 1)[0]));
@@ -136,7 +137,7 @@ pub const CPU = struct {
                     .page_crossed = (base & 0xFF00) != (addr & 0xFF00),
                 };
             },
-            AddressingMode.Indirect_Y => {
+            opcodeMod.AddressingMode.Indirect_Y => {
                 const zp = self.mem_read(self.PC);
                 const ptr: u8 = @addWithOverflow(zp, self.X)[0];
                 const lo: u16 = self.mem_read(ptr);
@@ -144,7 +145,7 @@ pub const CPU = struct {
                 self.PC += 1;
                 return .{ .addr = (hi << 8) | lo, .page_crossed = false };
             },
-            AddressingMode.NoneAddressing => {
+            opcodeMod.AddressingMode.NoneAddressing => {
                 return .{ .addr = self.mem_read(self.PC), .page_crossed = false };
             },
         }
@@ -162,7 +163,7 @@ pub const CPU = struct {
         return (self.P & @as(u8, (@as(u8, 1) << @intFromEnum(flag)))) != 0;
     }
 
-    fn adc(self: *CPU, mode: AddressingMode) void {
+    fn adc(self: *CPU, mode: opcodeMod.AddressingMode) void {
         const result = self.get_op_address(mode);
         self.cycles += @intFromBool(result.page_crossed);
         const value = self.mem_read(result.addr);
@@ -182,9 +183,9 @@ pub const CPU = struct {
         self.update_zero_and_negative_flags(value);
     }
 
-    fn lsr(self: *CPU, mode: AddressingMode) void {
+    fn lsr(self: *CPU, mode: opcodeMod.AddressingMode) void {
         var value: u8 = 0;
-        if (mode == AddressingMode.NoneAddressing) {
+        if (mode == opcodeMod.AddressingMode.NoneAddressing) {
             value = self.A >> 1;
             self.A = value;
         } else {
@@ -197,80 +198,56 @@ pub const CPU = struct {
     }
 
     fn run(self: *CPU) void {
+        const opcodes = opcodeMod.init_opcode();
         while (true) {
-            const opcode: usize = self.mem_read(self.PC); // Fetch
+            const op: u16 = self.mem_read(self.PC); // Fetch
+            const opcode = opcodes.get(op);
             self.PC += 1;
 
-            std.debug.print("{x}\n", .{opcode});
+            std.debug.print("{x}\n", .{op});
 
-            switch (opcode) { // Decode
+            switch (op) { // Decode
                 // Execute
                 // ADC
                 0x69 => {
-                    self.cycles += 2;
-                    self.PC += 1;
-                    self.adc(AddressingMode.Immediate);
+                    self.adc(opcode.?.mode);
                 },
                 0x65 => {
-                    self.cycles += 3;
-                    self.PC += 1;
-                    self.adc(AddressingMode.ZeroPage);
+                    self.adc(opcode.?.mode);
                 },
                 0x75 => {
-                    self.cycles += 4;
-                    self.PC += 1;
-                    self.adc(AddressingMode.ZeroPage_X);
+                    self.adc(opcode.?.mode);
                 },
                 0x6d => {
-                    self.cycles += 4;
-                    self.PC += 2;
-                    self.adc(AddressingMode.Absolute);
+                    self.adc(opcode.?.mode);
                 },
                 0x7D => {
-                    self.cycles += 4; // 5 if page is crossed
-                    self.PC += 2;
-                    self.adc(AddressingMode.Absolute_X);
+                    self.adc(opcode.?.mode);
                 },
                 0x79 => {
-                    self.cycles += 4; // 5 if page is crossed
-                    self.PC += 2;
-                    self.adc(AddressingMode.Absolute_Y);
+                    self.adc(opcode.?.mode);
                 },
                 0x61 => {
-                    self.cycles += 6;
-                    self.PC += 1;
-                    self.adc(AddressingMode.Immediate);
+                    self.adc(opcode.?.mode);
                 },
                 0x71 => {
-                    self.cycles += 5; // 6 if page is crossed
-                    self.PC += 1;
-                    self.adc(AddressingMode.Immediate);
+                    self.adc(opcode.?.mode);
                 },
                 // LSR
                 0x4a => {
-                    self.cycles += 2;
-                    // + 0
-                    self.lsr(AddressingMode.NoneAddressing);
+                    self.lsr(opcode.?.mode);
                 },
                 0x46 => {
-                    self.cycles += 5;
-                    self.PC += 1;
-                    self.lsr(AddressingMode.ZeroPage);
+                    self.lsr(opcode.?.mode);
                 },
                 0x56 => {
-                    self.cycles += 6;
-                    self.PC += 1;
-                    self.lsr(AddressingMode.ZeroPage_X);
+                    self.lsr(opcode.?.mode);
                 },
                 0x4e => {
-                    self.cycles += 6;
-                    self.PC += 2;
-                    self.lsr(AddressingMode.Absolute);
+                    self.lsr(opcode.?.mode);
                 },
                 0x5e => {
-                    self.cycles += 7;
-                    self.PC += 2;
-                    self.lsr(AddressingMode.Absolute_X);
+                    self.lsr(opcode.?.mode);
                 },
                 0x00 => {
                     return;
@@ -280,6 +257,9 @@ pub const CPU = struct {
                     return;
                 },
             }
+
+            self.PC += opcode.?.size;
+            self.cycles += opcode.?.cycles;
         }
     }
 
