@@ -5,11 +5,27 @@ const Io = std.Io;
 const logging = @import("logging");
 const logger = @import("logging").log;
 const nesLog = @import("logging").cpu;
+const sdl = @import("sdl.zig");
+const posix = std.posix;
 
 pub const std_options: std.Options = .{ .logFn = logging.formatFn, .log_level = logging.default_level, .log_scope_levels = &[_]std.log.ScopeLevel{
     .{ .scope = .cpu, .level = .debug },
     .{ .scope = .log, .level = .debug },
 } };
+
+fn handleCtrlC(signum: i32) callconv(.c) void {
+    std.process.exit(0);
+    std.debug.print("\n[!] Caught Ctrl+C (signal {}), Shutting down...\n", .{signum});
+}
+
+fn setupSigint() void {
+    var sa = posix.Sigaction{
+        .handler = .{ .handler = handleCtrlC },
+        .mask = posix.sigemptyset(),
+        .flags = 0,
+    };
+    _ = posix.sigaction(posix.SIG.INT, &sa, null);
+}
 
 fn getRom(allocator: std.mem.Allocator, romPath: [:0]const u8, io: Io) ![]u8 {
     var romFile = try Io.Dir.openFile(Io.Dir.cwd(), io, romPath, .{ .mode = .read_only });
@@ -20,6 +36,9 @@ fn getRom(allocator: std.mem.Allocator, romPath: [:0]const u8, io: Io) ![]u8 {
 
 pub fn main(init: std.process.Init) !void {
     const arena: std.mem.Allocator = init.arena.allocator();
+
+    const win, const renderer = sdl.initSDL();
+    defer sdl.closeSDL(win, renderer);
 
     // Accessing command line arguments:
     const args = try init.minimal.args.toSlice(arena);
