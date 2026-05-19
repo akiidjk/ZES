@@ -38,8 +38,6 @@ pub const CPU = struct {
 
     fn load(self: *CPU, program: []u8) void {
         @memcpy(self.memory[0x8000..(0x8000 + program.len)], program);
-        self.PC = 0x8000;
-        self.mem_write_u16(0xFFFC, 0x8000);
     }
 
     fn mem_read(self: *CPU, addr: u16) u8 {
@@ -70,8 +68,7 @@ pub const CPU = struct {
         self.A = 0;
         self.X = 0;
         self.PC += 0;
-        self.P = 0;
-
+        self.P = 0b100100;
         self.PC = self.mem_read_u16(0xFFFC);
     }
 
