@@ -31,6 +31,7 @@ pub fn init_opcode() std.AutoHashMap(u16, Opcode) {
     const opcodes = [_]Opcode{
         .{ .opcode = 0x00, .mnemonic = "BRK", .size = 1, .cycles = 7, .mode = .NoneAddressing },
         .{ .opcode = 0xea, .mnemonic = "NOP", .size = 1, .cycles = 2, .mode = .NoneAddressing },
+        .{ .opcode = 0x1a, .mnemonic = "NOP", .size = 1, .cycles = 2, .mode = .NoneAddressing },
 
         // Arithmetic
         .{ .opcode = 0x69, .mnemonic = "ADC", .size = 2, .cycles = 2, .mode = .Immediate },

@@ -197,6 +197,34 @@ pub const CPU = struct {
         self.update_zero_and_negative_flags(value);
     }
 
+    fn ora(self: *CPU, mode: opcodeMod.AddressingMode) void {
+        const result = self.get_op_address(mode);
+        self.A |= self.mem_read(result.addr);
+        self.update_zero_and_negative_flags(self.A);
+    }
+
+    // DEBUG PRINT
+    fn printStatus(self: *CPU) void {
+        std.debug.print("========================================\n", .{});
+        std.debug.print("               CPU STATUS               \n", .{});
+        std.debug.print("========================================\n", .{});
+        std.debug.print(" Registers:\n", .{});
+        std.debug.print("   PC: 0x{X:0>4}      SP: 0x{X:0>2}\n", .{ self.PC, self.SP });
+        std.debug.print("   A:  0x{X:0>2}        X:  0x{X:0>2}        Y:  0x{X:0>2}\n", .{ self.A, self.X, self.Y });
+        std.debug.print("   P:  0b{b:0>8}   (NV-BDIZC)\n", .{self.P});
+        std.debug.print("========================================\n", .{});
+    }
+
+    fn printOpcode(_: CPU, opcode: ?opcodeMod.Opcode) void {
+        std.debug.print(" Instruction: 0x{X:0>2}\n", .{opcode.?.opcode});
+        std.debug.print(" Opcode Info:\n", .{});
+        std.debug.print("   Mode:   {any}\n", .{opcode.?.mode});
+        std.debug.print("   Size:   {}\n", .{opcode.?.size});
+        std.debug.print("   Cycles: {}\n", .{opcode.?.cycles});
+    }
+
+    // ===============================================
+
     fn run(self: *CPU) void {
         const opcodes = opcodeMod.init_opcode();
         while (true) {
@@ -204,7 +232,8 @@ pub const CPU = struct {
             const opcode = opcodes.get(code);
             self.PC += 1;
             const program_counter_state = self.PC;
-            std.debug.print("{x}\n", .{code});
+            self.printStatus();
+            self.printOpcode(opcode);
 
             switch (code) { // Decode
                 // Execute
@@ -224,8 +253,12 @@ pub const CPU = struct {
                 0x4a, 0x46, 0x56, 0x4e, 0x5e => {
                     self.lsr(opcode.?.mode);
                 },
+                // ORA
+                0x09, 0x05, 0x15, 0x0d, 0x19, 0x01, 0x11 => {
+                    self.ora(opcode.?.mode);
+                },
                 // NOP
-                0xea => {
+                0xea, 0x1a => {
                     //do nothing
                 },
                 0x00 => {
@@ -238,7 +271,7 @@ pub const CPU = struct {
             }
 
             if (program_counter_state == self.PC) {
-                self.PC += (opcode.?.size - 1);
+                self.PC += @as(u16, (opcode.?.size - 1));
             }
             self.cycles += opcode.?.cycles;
         }
