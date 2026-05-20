@@ -59,9 +59,31 @@ pub const CPU = struct {
         self.mem_write(addr + 1, hi);
     }
 
-    fn update_zero_and_negative_flags(self: *CPU, result: u8) void {
-        self.set_flag(.Zero, @intFromBool(result == 0));
-        self.set_flag(.Negative, @intFromBool((result & 0b1000_0000) != 0));
+    fn stack_push(self: *CPU, data: u8) void {
+        self.mem_write((self.SP + 0x100), data);
+        self.SP += 1;
+    }
+
+    fn stack_pop(self: *CPU) u8 {
+        const res = self.mem_read(self.SP + 0x100);
+        self.SP -= 1;
+        return res;
+    }
+
+    fn stack_push_u16(self: *CPU, data: u16) void {
+        self.mem_write_u16(@as(u16, self.SP) + 0x100, data);
+        self.SP += 1;
+    }
+
+    fn stack_pop_u16(self: *CPU) u16 {
+        const res = self.mem_read_u16(self.SP + 0x100);
+        self.SP -= 1;
+        return res;
+    }
+
+    fn update_zero_and_negative_flags(self: *CPU, value: u8) void {
+        self.set_flag(.Zero, @intFromBool(value == 0));
+        self.set_flag(.Negative, @intFromBool((value & 0b1000_0000) != 0));
     }
 
     fn reset(self: *CPU) void {
@@ -69,6 +91,7 @@ pub const CPU = struct {
         self.X = 0;
         self.PC += 0;
         self.P = 0b100100;
+        self.SP = 0x0; // We have from 0 to FF and the stack is padded to do like 0x01$SP
         self.PC = self.mem_read_u16(0xFFFC);
     }
 
@@ -200,6 +223,38 @@ pub const CPU = struct {
         self.update_zero_and_negative_flags(self.A);
     }
 
+    fn lda(self: *CPU, mode: opcodeMod.AddressingMode) void {
+        const result = self.get_op_address(mode);
+        self.A = self.mem_read(result.addr);
+        update_zero_and_negative_flags(self, self.A);
+    }
+
+    fn sta(self: *CPU, mode: opcodeMod.AddressingMode) void {
+        const result = self.get_op_address(mode);
+        self.mem_write(result.addr, self.A);
+    }
+
+    fn jsr(self: *CPU, mode: opcodeMod.AddressingMode) void {
+        const result = self.get_op_address(mode);
+        self.stack_push_u16(self.PC - 1);
+        self.PC = result.addr;
+    }
+
+    fn tax(self: *CPU) void {
+        self.X = self.A;
+        self.update_zero_and_negative_flags(self.X);
+    }
+    fn tay(self: *CPU) void {
+        self.Y = self.A;
+        self.update_zero_and_negative_flags(self.Y);
+    }
+
+    fn ldx(self: *CPU, mode: opcodeMod.AddressingMode) void {
+        const result = self.get_op_address(mode);
+        self.X = self.mem_read(result.addr);
+        self.update_zero_and_negative_flags(self.X);
+    }
+
     // DEBUG PRINT
     fn printStatus(self: *CPU) void {
         std.debug.print("========================================\n", .{});
@@ -208,7 +263,7 @@ pub const CPU = struct {
         std.debug.print(" Registers:\n", .{});
         std.debug.print("   PC: 0x{X:0>4}      SP: 0x{X:0>2}\n", .{ self.PC, self.SP });
         std.debug.print("   A:  0x{X:0>2}        X:  0x{X:0>2}        Y:  0x{X:0>2}\n", .{ self.A, self.X, self.Y });
-        std.debug.print("   P:  0b{b:0>8}   (NV-BDIZC)\n", .{self.P});
+        std.debug.print("   P:  0b{b:0>8}\n", .{self.P});
         std.debug.print("========================================\n", .{});
     }
 
@@ -254,8 +309,34 @@ pub const CPU = struct {
                 0x09, 0x05, 0x15, 0x0d, 0x19, 0x01, 0x11 => {
                     self.ora(opcode.?.mode);
                 },
+                // LDA
+                0xa9, 0xa5, 0xb5, 0xad, 0xbd, 0xb9, 0xb1, 0xa1 => {
+                    self.lda(opcode.?.mode);
+                },
+                // STA
+                0x85, 0x95, 0x8d, 0x9d, 0x99, 0x81, 0x91 => {
+                    self.sta(opcode.?.mode);
+                },
+                // JSR
+                0x20 => {
+                    self.jsr(opcode.?.mode);
+                },
+                // TAX
+                0xAA => {
+                    self.tax();
+                },
+                // TAY
+                0xA8 => {
+                    self.tay();
+                },
+                //LDX
+                0xa2, 0xa6, 0xb6, 0xae, 0xbe => {
+                    self.ldx(opcode.?.mode);
+                },
                 // NOP
-                0xea, 0x1a => {
+                0xea,
+                0x1a,
+                => {
                     //do nothing
                 },
                 0x00 => {
