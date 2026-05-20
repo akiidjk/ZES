@@ -60,25 +60,28 @@ pub const CPU = struct {
     }
 
     fn stack_push(self: *CPU, data: u8) void {
-        self.mem_write((self.SP + 0x100), data);
-        self.SP += 1;
+        self.mem_write((@as(u16, self.SP) + @as(u16, 0x0100)), data);
+        _, _ = @subWithOverflow(self.SP, 1);
     }
 
     fn stack_pop(self: *CPU) u8 {
-        const res = self.mem_read(self.SP + 0x100);
-        self.SP -= 1;
+        const res = self.mem_read(@as(u16, self.SP) + @as(u16, 0x0100));
+        _, _ = @addWithOverflow(self.SP, 1);
         return res;
     }
 
     fn stack_push_u16(self: *CPU, data: u16) void {
-        self.mem_write_u16(@as(u16, self.SP) + 0x100, data);
-        self.SP += 1;
+        const hi: u8 = @intCast(data >> 8);
+        const lo: u8 = @intCast((data & 0xff));
+        self.stack_push(hi);
+        self.stack_push(lo);
     }
 
     fn stack_pop_u16(self: *CPU) u16 {
-        const res = self.mem_read_u16(self.SP + 0x100);
-        self.SP -= 1;
-        return res;
+        const lo = @as(u16, self.stack_pop());
+        const hi = @as(u16, self.stack_pop());
+
+        return hi << 8 | lo;
     }
 
     fn update_zero_and_negative_flags(self: *CPU, value: u8) void {
@@ -91,7 +94,7 @@ pub const CPU = struct {
         self.X = 0;
         self.PC += 0;
         self.P = 0b100100;
-        self.SP = 0x0; // We have from 0 to FF and the stack is padded to do like 0x01$SP
+        self.SP = 0xfd; // We have from 0 to FF and the stack is padded to do like 0x01$SP
         self.PC = self.mem_read_u16(0xFFFC);
     }
 
@@ -234,10 +237,9 @@ pub const CPU = struct {
         self.mem_write(result.addr, self.A);
     }
 
-    fn jsr(self: *CPU, mode: opcodeMod.AddressingMode) void {
-        const result = self.get_op_address(mode);
-        self.stack_push_u16(self.PC - 1);
-        self.PC = result.addr;
+    fn jsr(self: *CPU) void {
+        self.stack_push_u16(self.PC + 1);
+        self.PC = self.mem_read_u16(self.PC);
     }
 
     fn tax(self: *CPU) void {
@@ -267,6 +269,22 @@ pub const CPU = struct {
         std.debug.print("========================================\n", .{});
     }
 
+    fn printStack(self: *CPU) void {
+        std.debug.print("========================================\n", .{});
+        std.debug.print("              STACK STATUS              \n", .{});
+        std.debug.print("========================================\n", .{});
+        var i: u16 = 0x0100;
+        while (i <= 0x01FF) : (i += 16) {
+            std.debug.print(" 0x{X:0>4}: ", .{i});
+            var j: u16 = 0;
+            while (j < 16) : (j += 1) {
+                std.debug.print("{X:0>2} ", .{self.memory[i + j]});
+            }
+            std.debug.print("\n", .{});
+        }
+        std.debug.print("========================================\n", .{});
+    }
+
     fn printOpcode(_: CPU, opcode: ?opcodeMod.Opcode) void {
         std.debug.print(" Instruction: 0x{X:0>2}\n", .{opcode.?.opcode});
         std.debug.print(" Opcode Info:\n", .{});
@@ -286,6 +304,7 @@ pub const CPU = struct {
             const program_counter_state = self.PC;
             self.printStatus();
             self.printOpcode(opcode);
+            self.printStack();
 
             switch (code) { // Decode
                 // Execute
@@ -319,7 +338,7 @@ pub const CPU = struct {
                 },
                 // JSR
                 0x20 => {
-                    self.jsr(opcode.?.mode);
+                    self.jsr();
                 },
                 // TAX
                 0xAA => {

@@ -13,7 +13,7 @@ pub const std_options: std.Options = .{ .logFn = logging.formatFn, .log_level = 
     .{ .scope = .log, .level = .debug },
 } };
 
-fn handleCtrlC(signum: i32) callconv(.c) void {
+fn handleCtrlC(signum: std.os.linux.SIG) callconv(.c) void {
     std.process.exit(0);
     std.debug.print("\n[!] Caught Ctrl+C (signal {}), Shutting down...\n", .{signum});
 }
@@ -39,6 +39,8 @@ pub fn main(init: std.process.Init) !void {
 
     const win, const renderer = sdl.initSDL();
     defer sdl.closeSDL(win, renderer);
+
+    setupSigint();
 
     // Accessing command line arguments:
     const args = try init.minimal.args.toSlice(arena);
